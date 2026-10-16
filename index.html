@@ -236,6 +236,21 @@ button:disabled{cursor:not-allowed;opacity:.45}
 .sinfo .sw{flex:none;width:28px;height:28px;border:3px solid #fff}
 .sinfo b{color:#ffd84a;font-weight:normal;display:block;font-size:1.15em}
 .sinfo i{font-style:normal;color:#9fb4ff}
+
+.dlg canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;filter:brightness(.5) saturate(1.1)}
+.dlg{cursor:pointer;user-select:none}
+.dlg .dport{position:absolute;left:5%;bottom:32%;height:50%;max-width:40%;object-fit:contain;image-rendering:pixelated;transform:scaleX(-1);filter:drop-shadow(5px 5px 0 #000)}
+.dlg .dbox{position:absolute;left:3%;right:3%;bottom:4%;min-height:24%;background:#14102a;border:5px solid #fff;outline:4px solid #14102a;padding:20px 18px 16px;font-family:'Press Start 2P','Courier New',monospace;color:#fff;font-size:clamp(10px,2vw,17px);line-height:1.9}
+.dlg .dbox .narr{color:#ffd84a;text-align:center}
+.dlg .dname{position:absolute;top:-18px;left:14px;background:#ffd84a;color:#14102a;border:4px solid #14102a;padding:4px 10px;font-size:.8em;text-transform:uppercase}
+.dlg .dnext{position:absolute;right:14px;bottom:8px;color:#ffd84a;animation:blinkn .8s steps(1) infinite}
+@keyframes blinkn{50%{opacity:0}}
+.dlg .dskip{position:absolute;top:10px;right:10px;z-index:3;font:inherit;font-family:'Press Start 2P','Courier New',monospace;font-size:clamp(8px,1.6vw,12px);color:#fff;background:#14102a;border:3px solid #fff;padding:6px 10px;cursor:pointer}
+.story .gems{display:flex;gap:3px;flex-wrap:wrap}
+.story .gems i{width:12px;height:12px;border:2px solid #000;background:#1b2750;transform:rotate(45deg) scale(.8)}
+.story .gems i.on{background:var(--c);border-color:#fff}
+.sinfo .sgo{margin-left:auto;font:inherit;font-family:'Press Start 2P','Courier New',monospace;font-size:inherit;color:#14102a;background:#ffd84a;border:3px solid #fff;padding:8px 12px;cursor:pointer}
+.sinfo .sgo:hover{background:#fff}
 </style>
 
 <div class="vol" id="vol" role="group" aria-label="Volumen">
@@ -385,7 +400,7 @@ function sfx(n,...a){
   if(!AU.ctx || AU.ctx.state!=='running') auInit();
   try{ SFX[n](...a); }catch(e){}
 }
-const CLICK_SFX = {pick:'none',dexpick:'blip',menu:'back',play:'start',solo:'ok',online:'ok',story:'ok',chars:'ok',start:'start',rematch:'start',newteam:'back',move:'blip',switch:'blip'};
+const CLICK_SFX = {pick:'none',dexpick:'blip',menu:'back',play:'start',solo:'ok',online:'ok',story:'ok',snation:'ok',snext:'start',sretry:'start',storymap:'back',snew:'ok',dskip:'none',chars:'ok',start:'start',rematch:'start',newteam:'back',move:'blip',switch:'blip'};
 
 /* control de volumen retro */
 function speakerSvg(off){
@@ -652,6 +667,7 @@ const MENU = [
   {k:'chars',  t:'MIS PERSONAJES', d:null}
 ];
 function renderMenu(){
+  S.mode=null; S.enemy=null;
   S.screen='menu'; S.mi = S.mi||0; document.body.classList.add('on-title');
   $('#app').innerHTML = `
     <div class="title menu" id="title">
@@ -701,7 +717,9 @@ function mapLoad(cb){
     for(let i=0;i<MW*MH;i++){ n[i]=px[i*4]; f[i]=px[i*4+1]; b[i]=px[i*4+2]; }
     const rgb=h=>[1,3,5].map(k=>parseInt(h.substr(k,2),16));
     const col={}; for(const k in NAT) col[k]=rgb(NAT_FIX[k]||NAT[k].f);
-    MAPD={n,f,b,col}; cb();
+    const sx={},sy={},sc={}; for(let i=0;i<MW*MH;i++){ const k=n[i]; if(k){ sx[k]=(sx[k]||0)+i%MW; sy[k]=(sy[k]||0)+((i/MW)|0); sc[k]=(sc[k]||0)+1; } }
+    const cent={}; for(const k in sc){ const cx=sx[k]/sc[k], cy=sy[k]/sc[k]; let bd=1e9; for(let i=0;i<MW*MH;i++) if(n[i]==k){ const x=i%MW,y=(i/MW)|0,d=(x-cx)**2+(y-cy)**2; if(d<bd){bd=d;cent[k]=[x,y];} } }
+    MAPD={n,f,b,col,cent}; cb();
   };
   im.src = STORY_MAP.png;
 }
@@ -745,13 +763,19 @@ function mapDraw(ctx, hv, sel, t){
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ const i=(y+dy)*MW+x+dx; const c=(dx===0&&dy===0)?[255,216,74]:[20,10,20]; set(i,c[0],c[1],c[2]); }
   }
   ctx.putImageData(img,0,0);
+  const dia=(cx,cy,c)=>{ const rows=[[0,1],[-1,3],[-2,5],[-1,3],[0,1]]; ctx.fillStyle='#000'; for(let r=-3;r<=3;r++){ const w=3-Math.abs(r); ctx.fillRect(cx-w-1,cy+r,2*w+3,1); } ctx.fillStyle=c; for(let r=-2;r<=2;r++){ const w=2-Math.abs(r); ctx.fillRect(cx-w,cy+r,2*w+1,1); } };
+  const sv=S.sv; if(sv){ for(const k of sv.gems){ const c=MAPD.cent[k]; if(c) dia(c[0],c[1],'#ffd84a'); }
+    if(sv.gems.length>=GEMS_NEEDED&&!sv.ended&&MAPD.cent[19]&&blink) dia(MAPD.cent[19][0],MAPD.cent[19][1],'#ff3030'); }
 }
 const noAcc = s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+const GEM_N=[16,17,18,20,21,22,23,25,27,28,29,30,31,32,33];
 function renderStory(){
+  S.sv=S.sv||svLoad(); S.mode=null; S.enemy=null;
+  if(!S.sv.intro){ dlg(INTRO,0,()=>{S.sv.intro=true; svSave(); renderStory();}); return; }
   S.screen='story'; document.body.classList.add('on-title');
   $('#app').innerHTML = `
     <div class="title story" id="title" style="background-image:none">
-      <div class="shead"><span>MAPA DE APEXORA</span><button data-a="menu">&larr; MENU</button></div>
+      <div class="shead"><span>MAPA &middot; ANO 1010</span><span class="gems" title="Gemas">${GEM_N.map(k=>`<i class="${S.sv.gems.includes(k)?'on':''}" style="--c:${NAT_FIX[k]||NAT[k].f}"></i>`).join('')}</span><span><button data-a="snew" id="snew">NUEVA</button> <button data-a="menu">&larr; MENU</button></span></div>
       <div class="mapwrap" id="mapwrap"><canvas id="mapc" width="${MW}" height="${MH}"></canvas><div class="mtip" id="mtip"></div></div>
       <div class="sinfo" id="sinfo"><span>PASA EL CURSOR POR UNA NACION</span></div>
     </div>`;
@@ -762,9 +786,12 @@ function renderStory(){
     const hex=k=>{const c=MAPD.col[k];return `rgb(${c[0]},${c[1]},${c[2]})`;};
     const show=k=>{
       if(!k){ info.innerHTML='<span>PASA EL CURSOR POR UNA NACION</span>'; return; }
-      const m=NAT[k]; info.innerHTML=`<div class="sw" style="background:${hex(k)}"></div><div><b>${noAcc(m.n)}</b>${noAcc(LORE_NAT[k]||'')}<br>TERRITORIO ${m.a}%<br><i>${sel===+k?'HISTORIA: PROXIMAMENTE':'CLIC PARA ELEGIR'}</i></div>`;
+      const m=NAT[k], sv=S.sv, done=sv.gems.includes(+k), p=sv.prog[k]||0, qq=Q[k];
+      let st = done?'GEMA OBTENIDA': (+k===19 ? (sv.ended?'APEXORA ESTA A SALVO': sv.gems.length<GEMS_NEEDED?'SELLADA: GEMAS '+sv.gems.length+'/'+GEMS_NEEDED:'PUJ TE ESPERA') : (p?'EN CURSO '+p+'/'+qq.f.length:'SIN EXPLORAR'));
+      const can = !done && sel===+k && qq && !(+k===19 && (sv.gems.length<GEMS_NEEDED||sv.ended));
+      info.innerHTML=`<div class="sw" style="background:${hex(k)}"></div><div><b>${noAcc(m.n)}</b>${noAcc(LORE_NAT[k]||'')}<br><i>${st}${sel===+k?'':' &middot; CLIC PARA ELEGIR'}</i></div>${can?`<button class="sgo" data-a="snation" data-id="${k}">${p?'CONTINUAR':'ENTRAR'}</button>`:''}`;
     };
-    const loop=t=>{ if(S.screen!=='story'||!document.body.contains(cv)) return; const key=hv*1000+sel+((t>>8)&1)*100000; if(key!==last){ last=key; mapDraw(ctx,hv,sel,t); } raf=requestAnimationFrame(loop); };
+    const loop=t=>{ if(S.screen!=='story'||!document.body.contains(cv)) return; const key=hv*1000+sel+((t>>8)&1)*100000+S.sv.gems.length*10000000; if(key!==last){ last=key; mapDraw(ctx,hv,sel,t); } raf=requestAnimationFrame(loop); };
     const at=e=>{
       const r=cv.getBoundingClientRect(), x=Math.floor((e.clientX-r.left)/r.width*MW), y=Math.floor((e.clientY-r.top)/r.height*MH);
       if(x<0||y<0||x>=MW||y>=MH) return 0; return MAPD.n[y*MW+x];
@@ -780,6 +807,161 @@ function renderStory(){
     cv.addEventListener('pointerleave',()=>{ hv=0; tip.style.display='none'; show(sel); });
     show(sel); raf=requestAnimationFrame(loop);
   });
+}
+
+const INTRO = [
+ [null,'AÑO 1010. APEXORA.'],
+ [null,'Hace siglos, los dioses sellaron su poder en quince gemas divinas y confiaron una a cada nación.'],
+ [null,'Mientras las gemas sigan en su lugar, el mundo se sostiene. Si todas caen en una sola mano, el mundo se rompe.'],
+ ['caleus','Puj, el dictador de Umbra, ya mueve a sus ejércitos. Quiere las quince. Todas.'],
+ ['caleus','Todavía no tiene ninguna. Pero nosotros tampoco.'],
+ ['zarick','Crecí en Umbra. Sé lo que hace Puj con lo que toma.'],
+ ['karim','Entonces nos adelantamos. Una espada más no sobra.'],
+ ['bane','Mis sensores marcan quince señales. Una por nación.'],
+ ['caleus','Recorran Apexora. Convenzan o venzan a cada guardián y traigan las gemas.'],
+ ['caleus','Cuando las tengan todas, Umbra se abrirá. Y Puj los estará esperando.'],
+ [null,'Elige una nación en el mapa. Reúne las 15 gemas. Después, Umbra.']
+];
+const Q = {
+16:{rec:'astra',i:[[null,'LUMINARAE LUXOR. Torres flotantes sobre las nubes. Todo aquí huele a incienso y a vigilancia.']],
+ f:[{n:'Caballero de Luxor',t:['vela','jarek','liyam'],d:-2,p:[['Caballero','Alto. La Gema de Luxor no se entrega a extraños.']]},
+    {n:'Astra',t:['astra','vela','pin'],d:2,p:[['astra','Mi luz es la de Xora. Si quieren la gema, ilumínenme con algo mejor.']]}],
+ a:[[['Caballero','Imposible... Pasen. La guardiana los espera.']],[['astra','Perdí, y me alegra. Lleven la gema. Voy con ustedes.']]]},
+17:{rec:'jarek',i:[[null,'LUMIS. Una ciudad solar donde cada cable respira. La IA Inargo ve todo.']],
+ f:[{n:'Androide de Lumis',t:['sara','liyam','jarek'],d:-2,p:[['Androide','Escaneo completo. Intrusos detectados. Iniciando protocolo de expulsión.']]},
+    {n:'Jarek',t:['jarek','sara','liyam'],d:2,p:[['jarek','Inargo me pidió custodiar la gema. No me hagan quedar mal.']]}],
+ a:[[['bane','Su firmware es viejo. Mejor para nosotros.']],[['jarek','Un buen ajuste de cuentas. Cuenten conmigo, mi código ya los eligió.']]]},
+18:{rec:'tilimad',i:[[null,'ARBORIS. Un bosque vivo. Las tribus nómades susurran entre las ramas.']],
+ f:[{n:'Cazador del Bosque',t:['tilimad','zazap','nailis'],d:-2,p:[['Cazador','Las raíces nos avisaron de ustedes. No son bienvenidos.']]},
+    {n:'Tilimad',t:['tilimad','pin','nailis'],d:2,p:[['tilimad','La gema duerme en el corazón del bosque. Solo despierta ante quien resiste.']]}],
+ a:[[['Cazador','El bosque los deja pasar... por ahora.']],[['tilimad','Raíces y tormenta... ya me convencieron. Voy con ustedes.']]]},
+20:{rec:'zazap',i:[[null,'TRIBUS SKALDRAK. Montañas heladas. Aquí el viento corta más que una espada.']],
+ f:[{n:'Cazador Skaldrak',t:['zazap','kaelen','nailis'],d:-2,p:[['Cazador','Nadie sube sin permiso del clan. Muéstrenme que aguantan el frío.']]},
+    {n:'Zazap',t:['zazap','lynch','vela'],d:2,p:[['zazap','La gema es del hielo. Si se quiebran, se quedan aquí para siempre.']]}],
+ a:[[['Cazador','Duros. El clan los verá con otros ojos.']],[['zazap','Hielo contra hielo... qué sorpresa. Está bien, los acompaño.']]]},
+21:{rec:'vela',i:[[null,'REINO DE SKALDRUM. Columnas, estandartes y gradas. Un imperio que vive de sus torneos.']],
+ f:[{n:'Legionario',t:['vela','kaelen','jarek'],d:-2,p:[['Legionario','En Skaldrum se habla con la espada. Elijan quién primero.']]},
+    {n:'Vela',t:['vela','kaelen','astra'],d:2,p:[['vela','Ape me bendice. Karim, ¿vienes a retarme o a pedirme la gema?'],['karim','A las dos cosas.']]}],
+ a:[[['karim','Esta arena me trae recuerdos. Malos y buenos.']],[['vela','Quizá el Imperio también necesita cambiar. Voy con ustedes.']]]},
+22:{rec:'laki',i:[[null,'MARKIVTON. Un puerto sin ley donde los piratas negocian y los faroleros mienten.']],
+ f:[{n:'Pirata de Markivton',t:['jarek','sara','liyam'],d:-2,p:[['Pirata','Aquí todo tiene precio. Su cabeza vale bastante.']]},
+    {n:'Laki',t:['laki','pin','sara'],d:2,p:[['laki','Vi este combate antes de que existiera. Perdón... no, no lo vi. Es mentira.']]}],
+ a:[[['Pirata','Está bien, está bien. Me retiro antes de perder el barco.']],[['laki','Ya sabía que ganarían. Y ahora sé que iré con ustedes.']]]},
+23:{rec:'sara',i:[[null,'BORO. Refugio y cuna de contrabando. Mafias, clanes y rebeldes comparten las mismas calles.']],
+ f:[{n:'Mafioso de Boro',t:['kaelen','liyam','jaep'],d:-2,p:[['Mafioso','La gema es de la casa. Y la casa no regala nada.']]},
+    {n:'Sara',t:['sara','kaelen','jarek'],d:2,p:[['sara','Armé mis trampas esta mañana. Les aviso para ser justa.']]}],
+ a:[[['Mafioso','Que quede claro: no los dejé pasar. Se colaron.']],[['sara','Me ganaron a mi propio juego. Me gusta. Cuenten conmigo.']]]},
+25:{rec:'azalange',i:[[null,'NEGATT. Palacios corruptos y bibliotecas en ruinas. Los Ocho vigilan desde las sombras.']],
+ f:[{n:'Sirviente de Negatt',t:['jaep','lynch','kaelen'],d:-2,p:[['Sirviente','Alnasi no recibe visitas. Y las gemas no se tocan.']]},
+    {n:'Azalange',t:['azalange','lynch','jaep'],d:2,p:[['azalange','Dos bestias, un solo cuerpo. ¿Cuánto aguantan?']]}],
+ a:[[['Sirviente','Los Ocho... ya los vieron.']],[['azalange','Nunca nadie me ganó por completo. Interesante. Los sigo.']]]},
+27:{rec:'lynch',i:[[null,'PSYBERNIA. Silencio absoluto. Valeria sabe que están aquí.']],
+ f:[{n:'Criatura de Valeria',t:['lynch','sara','pin'],d:-2,p:[['Criatura','...']]},
+    {n:'Lynch',t:['lynch','azalange','pin'],d:2,p:[['lynch','La gema está bajo la ciudad. Antes tendrán que pasar sobre mí.']]}],
+ a:[[['zarick','Ni un sonido... odio eso.']],[['lynch','Valeria miente. Ahora lo sé. Les ayudaré a salir de aquí.']]]},
+28:{rec:'liyam',i:[[null,'SINFALÍA. Ciudades sin dinero y con sonrisas obligatorias. Aquí se vive de favores.']],
+ f:[{n:'Anfitrión de Sinfalía',t:['liyam','nailis','jaep'],d:-2,p:[['Anfitrión','¡Sonrían! Y luego déjennos ver cuánto me deben.']]},
+    {n:'Liyam',t:['liyam','sara','tilimad'],d:2,p:[['liyam','Me debes un favor, así que perderás con una sonrisa.']]}],
+ a:[[['Anfitrión','Qué alegría... tan forzada.']],[['liyam','Les devuelvo el favor. Voy con ustedes.']]]},
+29:{rec:'kaelen',i:[[null,'PRESIDIO DE KRAHN. Muros fríos y anclas antimagia. Los silenciadores no hablan.']],
+ f:[{n:'Silenciador',t:['kaelen','jarek','vela'],d:-2,p:[['Silenciador','Aquí la magia se apaga. Les gano sin esfuerzo.']]},
+    {n:'Kaelen',t:['kaelen','zazap','jaep'],d:2,p:[['kaelen','Tengo ganas de salir de aquí. Si quieren la gema, tendrán que ayudarme.']]}],
+ a:[[['Silenciador','Silencio... otra vez.']],[['kaelen','Me liberaron de un peso. Los sigo hasta donde haga falta.']]]},
+30:{rec:'jaep',i:[[null,'OSTRACA. Un desierto de coral y sal. Los clones repiten el mismo día una y otra vez.']],
+ f:[{n:'Clon de Ostraca',t:['jaep','nailis','liyam'],d:-2,p:[['Clon','Ya los vi llegar. Y ya perdí antes.']]},
+    {n:'Chip',t:['jaep','lynch','kaelen'],d:2,p:[['Chip','Soy el primero de los clones. Y no pienso ser el último.']]}],
+ a:[[['Clon','Otro ciclo, otra derrota.']],[['jaep','Chip... y yo, Jaep. Los dos vamos con ustedes.']]]},
+31:{rec:'pin',i:[[null,'SYLVARIS. Una mente colmena vegetal. Los ancestros hablan por cada hoja.']],
+ f:[{n:'Brote de la Urdimbre',t:['tilimad','pin','astra'],d:-2,p:[['Brote','Somos uno. Ustedes son extraños. Los asimilaremos.']]},
+    {n:'Pin',t:['pin','tilimad','lynch'],d:2,p:[['pin','Fascinante. Nunca registré a nadie que resista a la Urdimbre.']]}],
+ a:[[['Brote','Uno... menos.']],[['pin','Los acompaño. Necesito escribir esto en mi bitácora.']]]},
+32:{rec:'nailis',i:[[null,'PONGÍ. Ferias, luces y premios. Nada es gratis y perder cuesta caro.']],
+ f:[{n:'Feriante',t:['nailis','sara','liyam'],d:-2,p:[['Feriante','¡Pasen, pasen! Un combate, un premio. ¡Pierdan con estilo!']]},
+    {n:'Nailis',t:['nailis','zazap','jarek'],d:2,p:[['nailis','Aquí mando yo en el recreo. ¿Se animan?']]}],
+ a:[[['Feriante','¡Qué espectáculo! Ya me arruinaron el negocio.']],[['nailis','Buen juego. Me uno al grupo, necesito otro recreo.']]]},
+33:{rec:null,i:[[null,'DISNJAV. Una tierra enferma. El aire pica y el agua huele a metal.']],
+ f:[{n:'Mutante de Disnjav',t:['azalange','lynch','jaep'],d:0,p:[['Mutante','Veneno... en todas partes... pero aquí estamos.']]},
+    {n:'Plaga',t:['azalange','tilimad','lynch'],d:4,p:[[null,'Algo antiguo despierta bajo el suelo. Guarda la última gema.']]}],
+ a:[[['bane','Mis sensores marcan toxicidad extrema. Y eso que son tus propios amigos.']],[['zarick','Se acabó. El suelo... respira distinto.']]]},
+19:{rec:null,i:[[null,'UMBRA. Brutalismo, humo y hierro. Aquí nace todo lo que Apexora teme.'],['zarick','Volví... Esperaba no hacerlo nunca.']],
+ f:[{n:'Guardia de Hierro',t:['kaelen','jaep','jarek'],d:2,p:[['Guardia','Alto. El Dictador no recibe a nadie.']]},
+    {n:'Élite de Puj',t:['lynch','azalange','vela'],d:5,p:[['Élite','Cada gema que traen es una más para el Dictador.']]},
+    {n:'Puj',t:['puj','azalange','lynch'],d:8,p:[['puj','Quince gemas... Gracias por traérmelas.'],['zarick','No son tuyas.'],['puj','Eso lo decide el más fuerte.']]}],
+ a:[[['Guardia','El Dictador va a... saberlo.']],[['Élite','Imposible...']],[['puj','Hmpf... Así que ustedes eran los más fuertes. Llévense las gemas.'],['caleus','Zarick, Karim, Bane: lo lograron. Apexora respira de nuevo.']]]}
+};
+
+/* ---------- modo historia: motor ---------- */
+const SV_KEY='apx-story-v1', GEMS_NEEDED=15;
+function svNew(){ return {team:['zarick','karim','bane'],gems:[],prog:{},intro:false,ended:false}; }
+function svLoad(){ try{ const j=JSON.parse(localStorage.getItem(SV_KEY)); if(j&&j.team) return j; }catch(e){} return svNew(); }
+function svSave(){ try{ localStorage.setItem(SV_KEY,JSON.stringify(S.sv)); }catch(e){} }
+const plv = () => 30 + 3*(S.sv?S.sv.gems.length:0);
+const lvShow = id => S.mode==='story' ? plv() : lvOf(id);
+function mkL(id, lv){
+  const b=ROSTER.find(r=>r.id===id), f=0.5+lv*0.01, c={...b};
+  for(const k of ['hp','atk','def','spa','spd','spe']) c[k]=Math.round(b[k]*f);
+  c.lv=lv; return mk(c);
+}
+const gemOf = k => 'GEMA DE '+noAcc(NAT[k].n.replace(/^(Reino de|Presidio de|Tribus) /i,''));
+
+/* diálogos */
+function dlg(lines, nid, done){
+  S.screen='dlg'; document.body.classList.add('on-title');
+  let i=0, typing=false, full='', timer=0;
+  $('#app').innerHTML=`<div class="title dlg" id="title" style="background-image:none">
+    <canvas id="dbg" width="256" height="112"></canvas><button class="dskip" data-a="dskip">SALTAR &raquo;</button>
+    <img class="dport" id="dport" alt="" style="display:none"><div class="dbox" id="dbox"><div class="dname" id="dname"></div><div id="dtxt"></div><span class="dnext">&#9660;</span></div></div>`;
+  drawScene($('#dbg'), SCENES[(nid||0)%SCENES.length], 4000+(nid||0));
+  const show=()=>{
+    const [sp,tx]=lines[i], ch=ROSTER.find(r=>r.id===sp);
+    const nm=$('#dname'), im=$('#dport'), t=$('#dtxt');
+    nm.textContent = ch?ch.n:(sp||''); nm.style.display=nm.textContent?'block':'none';
+    if(ch&&ch.img){ im.src=ch.img; im.style.display='block'; } else im.style.display='none';
+    t.className = sp?'':'narr'; full=tx; t.textContent=''; typing=true; let n=0; clearInterval(timer);
+    timer=setInterval(()=>{ n++; t.textContent=full.slice(0,n); if(n%3===0) sfx('blip'); if(n>=full.length){ clearInterval(timer); typing=false; } },22);
+  };
+  const adv=()=>{
+    if(typing){ clearInterval(timer); $('#dtxt').textContent=full; typing=false; return; }
+    if(++i>=lines.length){ finish(); return; } sfx('move'); show();
+  };
+  const finish=()=>{ clearInterval(timer); S.dlg=null; done&&done(); };
+  S.dlg={adv,finish}; show();
+}
+
+/* flujo de nación */
+function storyEnter(k){
+  const q=Q[k], sv=S.sv; if(!q) return;
+  if(sv.gems.includes(k)) return;
+  if(k===19 && sv.gems.length<GEMS_NEEDED) return;
+  S.nat=k; const p=sv.prog[k]||0;
+  const go=()=>fightSelect(k,p);
+  const pre=[...(p===0?q.i:[]),...((q.f[p].p)||[])];
+  pre.length ? dlg(pre,k,go) : go();
+}
+function fightSelect(k,p){
+  S.mode='story'; S.cur={k,p}; S.pick=[]; 
+  const pool=S.sv.team;
+  if(pool.length<=TEAM_SIZE) S.pick=[...pool];
+  renderSelect();
+}
+function storyStartFight(){
+  const {k,p}=S.cur, f=Q[k].f[p], lv=plv()+f.d;
+  S.enemy={n:f.n,team:f.t.map(id=>mkL(id,lv))};
+  startBattle();
+}
+function storyWon(){
+  const {k,p}=S.cur, q=Q[k], sv=S.sv; sv.prog[k]=p+1;
+  const last = p+1>=q.f.length, lines=[...(q.a[p]||[])];
+  if(!last){ svSave(); dlg(lines,k,()=>fightSelect(k,p+1)); return; }
+  if(k===19){ sv.ended=true; svSave(); sfx('win'); dlg([...lines,[null,'Las quince gemas se unen en una sola luz. El equilibrio de Apexora se restaura.'],[null,'FIN DEL CAPÍTULO 1 · Gracias por jugar.']],k,()=>{S.mode=null;renderStory();}); return; }
+  sv.gems.push(k); const rec=q.rec;
+  if(rec&&!sv.team.includes(rec)) sv.team.push(rec);
+  svSave(); sfx('win');
+  const ex=[[null,gemOf(k)+' OBTENIDA ('+sv.gems.length+'/'+GEMS_NEEDED+')']];
+  if(rec) ex.push([null,ROSTER.find(r=>r.id===rec).n+' se une a tu equipo.']);
+  ex.push([null,'El equipo sube al nivel '+plv()+'.']);
+  if(sv.gems.length===GEMS_NEEDED) ex.push(['caleus','Las quince gemas son nuestras. Umbra ya no tiene escondite. Es hora de ir por Puj.']);
+  dlg([...lines,...ex],k,()=>{S.mode=null;renderStory();});
 }
 
 /* ---------- mis personajes ---------- */
@@ -809,14 +991,14 @@ function renderSelect(){
   const full = S.pick.length===TEAM_SIZE;
   $('#app').innerHTML = `
     <div class="bar">
-      <h2>Elegí tu equipo (${S.pick.length}/${TEAM_SIZE})</h2>
-      <div class="row2"><button class="btn ghost" data-a="menu">Menú</button><button class="btn" data-a="start" ${full?'':'disabled'}>Combatir</button></div>
+      <h2>${S.mode==='story'?noAcc(Q[S.cur.k].f[S.cur.p].n)+' &middot; ':''}Elegí tu equipo (${S.pick.length}/${TEAM_SIZE})</h2>
+      <div class="row2"><button class="btn ghost" data-a="${S.mode==='story'?'storymap':'menu'}">${S.mode==='story'?'Mapa':'Menú'}</button><button class="btn" data-a="start" ${full?'':'disabled'}>Combatir</button></div>
     </div>
-    <div class="grid">${ROSTER.map(r=>{
+    <div class="grid">${(S.mode==='story'?ROSTER.filter(r=>S.sv.team.includes(r.id)):ROSTER).map(r=>{
       const on = S.pick.includes(r.id);
       const st = [['PS',r.hp],['ATA',r.atk],['DEF',r.def],['AEs',r.spa],['DEs',r.spd],['VEL',r.spe]];
       return `<button class="card" data-a="pick" data-id="${r.id}" aria-pressed="${on}">
-        <div class="top">${sig(r)}<div><div class="nm">${r.n} <small>Nv. ${lvOf(r.id)}</small></div>${LORE_CH[r.id]?`<div style="font-size:11px;opacity:.8;margin:2px 0">${LORE_CH[r.id]}</div>`:''}${chips(r)}</div></div>
+        <div class="top">${sig(r)}<div><div class="nm">${r.n} <small>Nv. ${lvShow(r.id)}</small></div>${LORE_CH[r.id]?`<div style="font-size:11px;opacity:.8;margin:2px 0">${LORE_CH[r.id]}</div>`:''}${chips(r)}</div></div>
         <div class="stats">${st.map(([k,v])=>`<span>${k}</span><i style="width:${Math.min(100,v/1.2)}%"></i>`).join('')}</div>
         <div class="mv">${r.moves.map(m=>`<span>${MOVES[m].n}</span>`).join('')}</div>
       </button>`}).join('')}
@@ -825,8 +1007,9 @@ function renderSelect(){
 
 /* ---------- combate ---------- */
 function startBattle(){
-  S.P = S.pick.map(id => mk(ROSTER.find(r=>r.id===id)));
-  S.C = shuffle(ROSTER).slice(0,TEAM_SIZE).map(mk);
+  const st = S.mode==='story' && S.enemy;
+  S.P = S.pick.map(id => st ? mkL(id,plv()) : mk(ROSTER.find(r=>r.id===id)));
+  S.C = st ? S.enemy.team : shuffle(ROSTER).slice(0,TEAM_SIZE).map(mk);
   Object.assign(S,{pi:0,ci:0,busy:true,forced:false,over:false,turn:0,screen:'battle'});
   $('#app').innerHTML = `
     <div class="arena" id="field"><canvas id="bg" class="bg" width="256" height="112"></canvas><div id="sides"></div><div id="fx"></div></div>
@@ -838,7 +1021,7 @@ function startBattle(){
   drawScene($('#bg'), S.scene, Math.floor(Math.random()*1e9));
   renderField(); renderCtrl();
   (async()=>{
-    sfx('enter'); await say(`El rival envía a ${S.C[0].n}.`);
+    sfx('enter'); await say(`${S.mode==='story'&&S.enemy?S.enemy.n:'El rival'} envía a ${S.C[0].n}.`);
     sfx('enter'); await say(`¡Adelante, ${S.P[0].n}!`);
     newTurn(); S.busy=false; renderCtrl();
   })();
@@ -848,10 +1031,10 @@ function newTurn(){ S.turn++; if(S.turn>1) sfx('turn'); say(`Turno ${S.turn}`,'t
 function plate(side){
   const ch = act(side), t = team(side);
   return `<div class="plate">
-    <div class="r1"><b>${ch.n}</b><small>Nv. ${lvOf(ch.id)}</small></div>
+    <div class="r1"><b>${ch.n}</b><small>Nv. ${ch.lv||lvOf(ch.id)}</small></div>
     <div>${chips(ch)}</div>
     <div class="hp"><i id="hp-${side}"></i></div>
-    <div class="hpt"><span id="hpt-${side}"></span><span>${side==='p'?'Tú':'Rival'}</span></div>
+    <div class="hpt"><span id="hpt-${side}"></span><span>${side==='p'?'Tú':(S.mode==='story'&&S.enemy?S.enemy.n:'Rival')}</span></div>
     <div class="pips">${t.map((x,i)=>`<u class="${x.cur<=0?'d':''} ${i===(side==='p'?S.pi:S.ci)?'a':''}"></u>`).join('')}</div>
   </div>`;
 }
@@ -880,7 +1063,8 @@ function renderCtrl(){
   const c = $('#ctrl'); if(!c) return;
   if(S.over){
     const won = alive(S.C).length===0;
-    c.innerHTML = `<div class="end"><h2>${won?'¡Victoria!':'Derrota'}</h2>
+    c.innerHTML = S.mode==='story' ? `<div class="end"><h2>${won?'¡Victoria!':'Derrota'}</h2>
+      <div class="row">${won?'<button class="btn" data-a="snext">Continuar</button>':'<button class="btn" data-a="sretry">Reintentar</button><button class="btn ghost" data-a="storymap">Mapa</button>'}</div></div>` : `<div class="end"><h2>${won?'¡Victoria!':'Derrota'}</h2>
       <div class="row"><button class="btn" data-a="rematch">Revancha</button><button class="btn ghost" data-a="newteam">Cambiar equipo</button><button class="btn ghost" data-a="menu">Menú</button></div></div>`;
     return;
   }
@@ -1096,6 +1280,7 @@ async function play(choice){
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', e=>{
+  if(S.screen==='dlg' && S.dlg && !e.target.closest('[data-a]')){ S.dlg.adv(); return; }
   const b = e.target.closest('[data-a]'); if(!b || b.disabled) return;
   const a = b.dataset.a;
   { const cs = CLICK_SFX[a]; if(cs!=='none') sfx(cs||'blip'); }
@@ -1111,12 +1296,20 @@ document.addEventListener('click', e=>{
   else if(a==='story') renderStory();
   else if(a==='chars') renderChars();
   else if(a==='dexpick'){ S.cid=b.dataset.id; renderChars(); }
+  else if(a==='start' && S.mode==='story') storyStartFight();
+  else if(a==='snation') storyEnter(+b.dataset.id);
+  else if(a==='snext') storyWon();
+  else if(a==='sretry') fightSelect(S.cur.k,S.cur.p);
+  else if(a==='storymap'){ S.mode=null; renderStory(); }
+  else if(a==='dskip'){ S.dlg&&S.dlg.finish(); }
+  else if(a==='snew'){ if(b.dataset.sure){ S.sv=svNew(); svSave(); renderStory(); } else { b.dataset.sure=1; b.textContent='SEGURO?'; setTimeout(()=>{ if(b.isConnected){ delete b.dataset.sure; b.textContent='NUEVA'; } },2500); } }
   else if(a==='start' || a==='rematch') startBattle();
   else if(a==='newteam'){ S.pick=[]; renderSelect(); }
   else if(a==='move') play({k:'move', i:+b.dataset.i});
   else if(a==='switch') play({k:'switch', i:+b.dataset.i});
 });
 document.addEventListener('keydown', e=>{
+  if(S.screen==='dlg' && S.dlg){ if(e.key==='Enter'||e.key===' '||e.key==='ArrowRight'){ e.preventDefault(); S.dlg.adv(); } return; }
   if((e.key==='m'||e.key==='M') && !e.metaKey && !e.ctrlKey && !e.altKey){ auMute(); return; }
   if(S.screen==='title' && (e.key==='Enter' || e.key===' ')){ e.preventDefault(); renderMenu(); return; }
   if(S.screen==='menu'){
@@ -1126,6 +1319,7 @@ document.addEventListener('keydown', e=>{
     else if(e.key==='Escape') renderTitle();
     return;
   }
+  if(S.screen==='select' && S.mode==='story' && e.key==='Escape'){ S.mode=null; renderStory(); return; }
   if(['online','chars','select','story'].includes(S.screen) && e.key==='Escape'){ renderMenu(); return; }
   if(S.screen!=='battle' || e.metaKey || e.ctrlKey) return;
   if(/^[1-4]$/.test(e.key)) document.querySelector(`.mbtn[data-i="${+e.key-1}"]`)?.click();
