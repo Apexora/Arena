@@ -1393,7 +1393,7 @@ function storyWon(){
   for(const id of (st.rec||[])) if(!sv.team.includes(id)){ sv.team.push(id); lines.push([null,ROSTER.find(r=>r.id===id).n+' se une a tu equipo.']); }
   if(last){ sv.gems.push(k); lines.push([null,gemOf(k)+' OBTENIDA ('+sv.gems.length+'/'+GEMS_NEEDED+')']); }
   if(lines.length) lines.push([null,'El equipo sube al nivel '+sv.lv+'.']); else S.note='El equipo sube al nivel '+sv.lv;
-  svSave(); sfx('win');
+  svSave(); sfx('win'); apxStory(k,st,last,sv,(S.enemy&&S.enemy.n)||'');
   const after=()=>{ S.mode=null; last?renderStory():renderPath(k,p+1); };
   lines.length ? dlg(lines,k,after) : after();
 }
@@ -1445,6 +1445,7 @@ function renderSelect(){
 
 /* ---------- combate ---------- */
 function startBattle(){
+  S.rep=false;
   const st = S.mode==='story' && S.enemy;
   S.rng = S.online ? mulberry(S.online.seed) : null;
   S.P = S.online ? S.online.my.map(id=>mk(ROSTER.find(r=>r.id===id))) : S.pick.map(id => st ? mkL(id,plv()) : mk(ROSTER.find(r=>r.id===id)));
@@ -1721,7 +1722,7 @@ async function runTurn(pc, cc){
     if(foe.cur<=0) break;
   }
   if(!alive(S.C).length || !alive(S.P).length){
-    S.over=true; sfx(alive(S.C).length ? 'lose' : 'win');
+    S.over=true; sfx(alive(S.C).length ? 'lose' : 'win'); apxFin(!alive(S.C).length);
     await say(alive(S.C).length ? 'Te quedaste sin personajes.' : 'El rival se quedó sin personajes.','big',0);
     renderCtrl(); return;
   }
@@ -1827,6 +1828,146 @@ const NETFB={
   async push(code,n,action){ await this.g(code).collection('moves').doc(String(n)).set({by:this.uid,action,t:Date.now()}); }
 };
 const NET=window.NET_OVERRIDE||NETFB;
+/* =========================================================
+   LOGROS Y ACTIVIDAD DE APEXORA (misma cuenta y mismas colecciones que el Portal).
+   Solo actúa si hay sesión Apexora abierta y el jugador ya tiene perfil en el Portal.
+   ========================================================= */
+const APX_LOGROS={
+  arena_primera_victoria:{n:"Primer combate",d:"Gana un combate en Arena",i:"⚔️",p:10},
+  arena_10_victorias:{n:"Gladiador",d:"10 victorias en Arena",i:"🏆",p:30},
+  arena_50_victorias:{n:"Campeón de la Arena",d:"50 victorias en Arena",i:"👑",p:100},
+  arena_primer_online:{n:"Duelista online",d:"Gana un combate online",i:"🌐",p:20},
+  arena_5_online:{n:"Rival temible",d:"5 victorias online",i:"🔥",p:40},
+  arena_historia_inicio:{n:"Comienza el viaje",d:"Gana tu primer combate del Modo Historia",i:"🗺️",p:10},
+  arena_primer_jefe:{n:"Cazajefes",d:"Derrota a tu primer jefe en la Historia",i:"👹",p:25},
+  arena_primera_gema:{n:"Primera gema",d:"Consigue tu primera gema",i:"💎",p:30},
+  arena_5_gemas:{n:"Coleccionista de gemas",d:"Consigue 5 gemas",i:"💠",p:60},
+  arena_10_gemas:{n:"Cazador de gemas",d:"Consigue 10 gemas",i:"🔷",p:100},
+  arena_15_gemas:{n:"Guardián de las gemas",d:"Consigue las 15 gemas",i:"🌟",p:150},
+  arena_historia_completa:{n:"Apexora respira",d:"Derrota a Puj y termina la Historia",i:"🏁",p:200}
+};
+const APX={
+  q:Promise.resolve(), okp:null, t0:0,
+  run(fn){ this.q=this.q.then(fn).catch(()=>{}); return this.q; },
+  async ready(){
+    if(this.okp===null) this.okp=(async()=>{ try{ if(window.NET_OVERRIDE) return false; await NETFB.init(); return !!(NETFB.uid&&NETFB.db); }catch(e){ return false; } })();
+    return this.okp;
+  },
+  ref(){ return NETFB.db.collection('apexora_players').doc(NETFB.uid); },
+  hoy(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires'}).format(new Date()); },
+  toast(t,s){
+    try{ const d=document.createElement('div'); d.setAttribute('role','status');
+      d.style.cssText='position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99999;background:#17202e;color:#fff;border:2px solid #2556d9;border-radius:10px;padding:10px 16px;font:600 14px Rajdhani,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.35);text-align:center;max-width:90vw';
+      d.innerHTML='<b></b><br><small style="opacity:.8"></small>'; d.firstChild.textContent=t; d.lastChild.textContent=s||'';
+      document.body.appendChild(d); setTimeout(()=>d.remove(),4200); }catch(e){}
+  },
+  async actividad(tipo,datos){
+    const u=firebase.auth().currentUser; if(!u) return;
+    let nombre=NETFB.name||'Alguien', avatar='🙂';
+    try{ const p=await NETFB.db.collection('apexora_profiles').doc(u.uid).get(); if(p.exists){ nombre=p.data().name||nombre; avatar=p.data().avatar||avatar; } }catch(e){}
+    const limpio={}; for(const [k,v] of Object.entries(datos||{}).slice(0,6)) limpio[k]=(typeof v==='number'||typeof v==='boolean')?v:String(v).slice(0,40);
+    await NETFB.db.collection('apexora_activity').add({uid:u.uid,nombre:String(nombre).slice(0,24),avatar:String(avatar).slice(0,80),juego:'arena',tipo,datos:limpio,ts:firebase.firestore.FieldValue.serverTimestamp()});
+  },
+  async logro(id){
+    const def=APX_LOGROS[id]; if(!def) return false;
+    const F=firebase.firestore.FieldValue, ref=this.ref();
+    const ok=await NETFB.db.runTransaction(async tx=>{
+      const s=await tx.get(ref);
+      if(!s.exists||(s.data().logros&&s.data().logros[id])) return false;
+      tx.update(ref,{['logros.'+id]:{fecha:F.serverTimestamp(),juego:'arena'},'fragmentos.comun':F.increment(def.p)});
+      return true;
+    });
+    if(ok){ this.toast(def.i+' Logro: '+def.n,'+'+def.p+' Sinfalita'); }
+    return ok;
+  },
+  async premiar(comun,probRara){
+    const F=firebase.firestore.FieldValue, ref=this.ref();
+    return NETFB.db.runTransaction(async tx=>{
+      const sn=await tx.get(ref); if(!sn.exists) return {comun:0,rara:0};
+      const x=sn.data(), dia=this.hoy();
+      const previo=x.cupo&&x.cupo.dia===dia?x.cupo.comun:0;
+      const gan=Math.max(0,Math.min(comun,60,300-previo));
+      const tnMs=x.tn&&x.tn.toMillis?x.tn.toMillis():0;
+      const rara=Date.now()-tnMs>6*3600e3+5000&&Math.random()<probRara?1:0;
+      if(!gan&&!rara) return {comun:0,rara:0};
+      const upd={'fragmentos.comun':x.fragmentos.comun+gan,'fragmentos.rara':x.fragmentos.rara+rara,cupo:{dia,comun:previo+gan},ts:F.serverTimestamp()};
+      if(rara) upd.tn=F.serverTimestamp();
+      tx.update(ref,upd); return {comun:gan,rara};
+    });
+  },
+  async stat(clave,n){ await this.ref().update({['stats.arena.'+clave]:firebase.firestore.FieldValue.increment(n||1)}); },
+  async contadores(){ const s=await this.ref().get(); return (s.exists&&s.data().stats&&s.data().stats.arena)||{}; },
+};
+
+/* Retroactivo: sincroniza UNA vez el progreso de Historia guardado en este navegador (apx-story-v2). */
+function apxRetro(){
+  APX.run(async()=>{
+    if(!(await APX.ready())) return;
+    const key='apx-retro-v1-'+NETFB.uid;
+    try{ if(localStorage.getItem(key)) return; }catch(e){}
+    const sn=await APX.ref().get(); if(!sn.exists) return;
+    const marca=(sn.data().stats&&sn.data().stats.arena&&sn.data().stats.arena.retro);
+    if(marca){ try{localStorage.setItem(key,'1')}catch(e){} return; }
+    const sv=svLoad(), prog=sv.prog||{}, gems=(sv.gems||[]).map(x=>+x);
+    let peleas=0, jefes=0;
+    for(const k of Object.keys(prog)){ const P=PATHS[k]||[], n=Math.min(+prog[k]||0,P.length); peleas+=n; jefes+=P.slice(0,n).filter(x=>x.k==='b').length; }
+    if(!peleas) return;
+    try{
+      await APX.stat('victorias',peleas); if(jefes) await APX.stat('jefes',jefes);
+      const c=await APX.contadores(), v=c.victorias||0, g=gems.filter(x=>x!==19).length;
+      await APX.logro('arena_primera_victoria'); await APX.logro('arena_historia_inicio');
+      if(v>=10) await APX.logro('arena_10_victorias'); if(v>=50) await APX.logro('arena_50_victorias');
+      if(jefes) await APX.logro('arena_primer_jefe');
+      if(g>=1) await APX.logro('arena_primera_gema'); if(g>=5) await APX.logro('arena_5_gemas');
+      if(g>=10) await APX.logro('arena_10_gemas'); if(g>=15) await APX.logro('arena_15_gemas');
+      const P19=PATHS[19]; if(gems.includes(19)||(P19&&(+prog[19]||0)>=P19.length)) await APX.logro('arena_historia_completa');
+      for(const k of gems.filter(x=>x!==19)){ try{ await APX.actividad('aventura',{conquista:true,gema:gemOf(k),nacion:(NAT[k]&&NAT[k].n)||''}); }catch(e){} }
+      await APX.ref().update({'stats.arena.retro':true});
+      try{localStorage.setItem(key,'1')}catch(e){}
+      APX.toast('Progreso de Historia sincronizado',peleas+' combates · '+g+' gemas');
+    }catch(e){}
+  });
+}
+window.addEventListener('load',()=>setTimeout(apxRetro,2000));
+/* Fin de un combate con KO real (solitario, historia u online). Una sola vez por combate. */
+function apxFin(won){
+  if(!won||S.rep) return; S.rep=true;
+  const online=!!S.online, story=S.mode==='story', rival=online?(S.online.oppName||'Rival'):'';
+  APX.run(async()=>{
+    if(!(await APX.ready())) return;
+    const sn=await APX.ref().get(); if(!sn.exists) return;
+    await APX.stat('victorias',1); if(online) await APX.stat('online',1);
+    const c=await APX.contadores(), v=c.victorias||0, o=c.online||0;
+    const g=await APX.premiar(online?15:story?12:8, online||story?0.05:0.03);
+    if(g.comun||g.rara) APX.toast('¡Victoria!','+'+g.comun+' Sinfalita'+(g.rara?' · +'+g.rara+' Odita':''));
+    await APX.logro('arena_primera_victoria');
+    if(v>=10) await APX.logro('arena_10_victorias');
+    if(v>=50) await APX.logro('arena_50_victorias');
+    if(online){ await APX.logro('arena_primer_online'); if(o>=5) await APX.logro('arena_5_online');
+      await APX.actividad('duelo',{rival}); }
+  });
+}
+/* Progreso de Historia: se llama al confirmar la victoria (antes de avanzar). */
+function apxStory(k,st,last,sv,rival){
+  const nacion=(NAT[k]&&NAT[k].n)||'', gemas=sv.gems.filter(x=>+x!==19).length, final=+k===19&&last;
+  APX.run(async()=>{
+    if(!(await APX.ready())) return;
+    const sn=await APX.ref().get(); if(!sn.exists) return;
+    await APX.logro('arena_historia_inicio');
+    if(st.k==='b') { await APX.stat('jefes',1); await APX.logro('arena_primer_jefe'); }
+    if(last&&!final){
+      await APX.logro('arena_primera_gema');
+      if(gemas>=5) await APX.logro('arena_5_gemas');
+      if(gemas>=10) await APX.logro('arena_10_gemas');
+      if(gemas>=15) await APX.logro('arena_15_gemas');
+    }
+    if(final) await APX.logro('arena_historia_completa');
+    if(st.k==='b') await APX.actividad('aventura',{jefe:true,rival,nacion});
+    else if(st.k==='s') await APX.actividad('aventura',{subjefe:true,rival,nacion});
+    if(last&&!final) await APX.actividad('aventura',{conquista:true,gema:gemOf(k),nacion});
+  });
+}
+
 const O={role:null,code:null,q:{h:[],g:[]},next:0,phase:'idle',pumping:false,waiting:false,offs:[],name:'',gdata:null,sent:false,msg:''};
 const mulberry=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
 const oErr=e=>{const c=(e&&e.code)||'';
@@ -2015,7 +2156,7 @@ document.addEventListener('click',async e=>{
     const u=$('#on-u')?.value||'', p=$('#on-p')?.value||'';
     if(uname(u).length<2||p.length<6){ O.msg='USUARIO (2+) Y CLAVE (6+)'; return oLogin(); }
     b.textContent='...';
-    try{ await NET.login(u,p,a==='oreg'); O.name=NET.name; try{localStorage.setItem('apx-arena-user',O.name)}catch(e){} O.msg=''; oLobby(); }
+    try{ await NET.login(u,p,a==='oreg'); O.name=NET.name; try{localStorage.setItem('apx-arena-user',O.name)}catch(e){} apxRetro(); O.msg=''; oLobby(); }
     catch(err){ O.msg=oErr(err); oLogin(); }
   }
   else if(a==='ocreate'){ b.textContent='...'; oAct(oCreate); }
